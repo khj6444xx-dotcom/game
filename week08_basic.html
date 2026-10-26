@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>장애물 피하기 게임</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial;
+        }
+
+        canvas {
+            border: 2px solid black;
+            background: #f9f9f9;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>장애물 피하기 게임</h1>
+    <p>점수: <span id="score">0</span> | 체력: <span id="hp">100</span></p>
+    <p>조작: 방향키 ↑ ↓ ← →</p>
+    <p>파란색 아이템을 먹으면 5초 동안 무적!</p>
+
+    <button id="startButton" onclick="startGame()">게임 시작</button>
+    <br>
+
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const scoreText = document.getElementById("score");
+        const hpText = document.getElementById("hp");
+        const startButton = document.getElementById("startButton");
+
+        let score = 0;
+        let hp = 100;
+        let gameOver = false;
+        let gameRunning = false;
+        let invincibleUntil = 0;
+        let lastRockTime = 0;
+        let lastItemTime = 0;
+        let animationId = null;
+
+        const player = {
+            x: 280,
+            y: 280,
+            width: 40,
+            height: 40,
+            speed: 6
+        };
+
+        const keys = {};
+        const rocks = [];
+        let shieldItem = null;
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key.startsWith("Arrow")) {
+                event.preventDefault();
+            }
+
+            keys[event.key] = true;
+        });
+
+        document.addEventListener("keyup", function (event) {
+            keys[event.key] = false;
+        });
+
+        function drawPlayer() {
+            if (Date.now() < invincibleUntil) {
+                ctx.fillStyle = "gold";
+            } else {
+                ctx.fillStyle = "royalblue";
+            }
+
+            ctx.fillRect(
+                player.x,
+                player.y,
+                player.width,
+                player.height
+            );
+        }
+
+        function movePlayer() {
+            if (keys["ArrowLeft"]) {
+                player.x -= player.speed;
+            }
+
+            if (keys["ArrowRight"]) {
+                player.x += player.speed;
+            }
+
+            if (keys["ArrowDown"]) {
+                player.y += player.speed;
+            }
+
+            if (keys["ArrowUp"]) {
+                player.y -= player.speed;
+            }
+
+            if (player.x < 0) {
+                player.x = 0;
+            }
+
+            if (player.x + player.width > canvas.width) {
+                player.x = canvas.width - player.width;
+            }
+
+            if (player.y < 0) {
+                player.y = 0;
+            }
+
+            if (player.y + player.height > canvas.height) {
+                player.y = canvas.height - player.height;
+            }
+        }
+
+        function createRock() {
+            const rock = {
+                x: Math.random() * (canvas.width - 30),
+                y: -30,
+                width: 30,
+                height: 30,
+                speed: Math.random() * 3 + 2,
+                damage: 20
+            };
+
+            rocks.push(rock);
+        }
+
+        function drawRocks() {
+            ctx.fillStyle = "gray";
+
+            for (let rock of rocks) {
+                ctx.beginPath();
+                ctx.arc(
+                    rock.x + rock.width / 2,
+                    rock.y + rock.height / 2,
+                    rock.width / 2,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+        }
+
+        function moveRocks() {
+            for (let rock of rocks) {
+                rock.y += rock.speed;
+            }
+
+            for (let i = rocks.length - 1; i >= 0; i--) {
+                if (rocks[i].y > canvas.height) {
+                    rocks.splice(i, 1);
+                    score++;
+                    scoreText.textContent = score;
+                }
+            }
+        }
+
+        function createShieldItem() {
+            if (shieldItem === null) {
+                shieldItem = {
+                    x: Math.random() * (canvas.width - 24),
+                    y: -24,
+                    width: 24,
+                    height: 24,
+                    speed: 2
+                };
+            }
+        }
+
+        function drawShieldItem() {
+            if (shieldItem === null) return;
+
+            ctx.fillStyle = "deepskyblue";
+            ctx.beginPath();
+            ctx.arc(
+                shieldItem.x + shieldItem.width / 2,
+                shieldItem.y + shieldItem.height / 2,
+                shieldItem.width / 2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
+
+        function moveShieldItem() {
+            if (shieldItem === null) return;
+
+            shieldItem.y += shieldItem.speed;
+
+            if (shieldItem.y > canvas.height) {
+                shieldItem = null;
+            }
+        }
+
+        function checkShieldCollision() {
+            if (shieldItem === null) return;
+
+            if (
+                player.x < shieldItem.x + shieldItem.width &&
+                player.x + player.width > shieldItem.x &&
+                player.y < shieldItem.y + shieldItem.height &&
+                player.y + player.height > shieldItem.y
+            ) {
+                invincibleUntil = Date.now() + 5000;
+                shieldItem = null;
+            }
+        }
+
+        function checkCollision() {
+            for (let i = rocks.length - 1; i >= 0; i--) {
+                const rock = rocks[i];
+
+                if (
+                    player.x < rock.x + rock.width &&
+                    player.x + player.width > rock.x &&
+                    player.y < rock.y + rock.height &&
+                    player.y + player.height > rock.y
+                ) {
+                    rocks.splice(i, 1);
+
+                    if (Date.now() < invincibleUntil) {
+                        continue;
+                    }
+
+                    hp -= rock.damage;
+
+                    if (hp < 0) {
+                        hp = 0;
+                    }
+
+                    hpText.textContent = hp;
+
+                    if (hp <= 0) {
+                        endGame();
+                        return;
+                    }
+                }
+            }
+        }
+
+        function drawHpBar() {
+          ctx.fillStyle = "lightgray";
+          ctx.fillRect(20, 20, 200, 20);
+
+          ctx.fillStyle = "limegreen";
+          ctx.fillRect(20, 20, hp * 2, 20);
+
+          ctx.strokeStyle = "black";
+          ctx.strokeRect(20, 20, 200, 20);
+}
+
+        
+function endGame() {
+    gameOver = true;
+    gameRunning = false;
+
+    cancelAnimationFrame(animationId);
+
+    startButton.textContent = "다시 시작";
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawHpBar();
+    drawShieldItem();
+    drawPlayer();
+    drawRocks();
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.font = "32px Arial";
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "게임 오버!",
+        canvas.width / 2,
+        canvas.height / 2 - 20
+    );
+
+    ctx.font = "24px Arial";
+    ctx.fillStyle = "white";
+
+    ctx.fillText(
+        "최종 점수: " + score,
+        canvas.width / 2,
+        canvas.height / 2 + 30
+    );
+}
+
+
+        function startGame() {
+            cancelAnimationFrame(animationId);
+
+            score = 0;
+            hp = 100;
+            gameOver = false;
+            gameRunning = true;
+            invincibleUntil = 0;
+
+            player.x = 280;
+            player.y = 280;
+
+            rocks.length = 0;
+            shieldItem = null;
+
+            scoreText.textContent = score;
+            hpText.textContent = hp;
+            startButton.textContent = "게임 재시작";
+
+            for (let key in keys) {
+                keys[key] = false;
+            }
+
+            lastRockTime = Date.now();
+            lastItemTime = Date.now();
+
+            gameLoop();
+        }
+
+        function gameLoop() {
+            if (!gameRunning || gameOver) return;
+
+            const now = Date.now();
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (now - lastRockTime >= 700) {
+                createRock();
+                lastRockTime = now;
+            }
+
+            if (now - lastItemTime >= 7000) {
+                if (Math.random() < 0.7) {
+                    createShieldItem();
+                }
+
+                lastItemTime = now;
+            }
+
+            movePlayer();
+            moveRocks();
+            moveShieldItem();
+
+            checkShieldCollision();
+            checkCollision();
+
+            if (gameOver) return;
+
+            drawHpBar();
+            drawShieldItem();
+            drawPlayer();
+            drawRocks();
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+
+</html>
