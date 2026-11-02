@@ -1,0 +1,317 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Space Shooter</title>
+
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial;
+            background: white;
+            color: black;
+        }
+
+        canvas {
+            background: black;
+            border: 2px solid #00aaff;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Space Shooter</h1>
+
+    <p>
+        점수: <span id="score">0</span> |
+        생명: <span id="hp">3</span>
+    </p>
+
+    <p>이동: ← → | 발사: Space</p>
+
+    <canvas id="gameCanvas" width="600" height="500"></canvas>
+
+    <br>
+
+    <button onclick="startGame()">게임 시작</button>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        let score = 0;
+        let hp = 3;
+        let gameRunning = false;
+
+        let player = {
+            x: 280,
+            y: 440,
+            width: 40,
+            height: 30,
+            speed: 6
+        };
+
+        let bullets = [];
+        let enemies = [];
+        let items = [];
+        let keys = {};
+
+        let lastShot = 0;
+        let enemyTimer = 0;
+        let itemTimer = 0;
+        let animationId;
+
+        document.addEventListener("keydown", function(e) {
+            keys[e.code] = true;
+
+            if (e.code === "Space") {
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener("keyup", function(e) {
+            keys[e.code] = false;
+        });
+
+        function updateUI() {
+            document.getElementById("score").textContent = score;
+            document.getElementById("hp").textContent = hp;
+        }
+
+        function startGame() {
+            cancelAnimationFrame(animationId);
+
+            score = 0;
+            hp = 3;
+            bullets = [];
+            enemies = [];
+            items = [];
+            player.x = 280;
+
+            gameRunning = true;
+
+            lastShot = 0;
+            enemyTimer = 0;
+            itemTimer = Date.now();
+
+            updateUI();
+            gameLoop();
+        }
+
+        function drawPlayer() {
+            ctx.fillStyle = "#00aaff";
+
+            ctx.beginPath();
+            ctx.moveTo(player.x + 20, player.y);
+            ctx.lineTo(player.x, player.y + 30);
+            ctx.lineTo(player.x + 40, player.y + 30);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function shoot() {
+            if (Date.now() - lastShot < 300) return;
+
+            lastShot = Date.now();
+
+            if (Math.random() < 0.2) {
+                bullets.push({ x: player.x + 5, y: player.y });
+                bullets.push({ x: player.x + 20, y: player.y });
+                bullets.push({ x: player.x + 35, y: player.y });
+            } else {
+                bullets.push({ x: player.x + 20, y: player.y });
+            }
+        }
+
+        function createEnemy() {
+            enemies.push({
+                x: Math.random() * 560,
+                y: -30,
+                size: 30,
+                speed: 2 + Math.random() * 2
+            });
+        }
+
+        function createItem() {
+            items.push({
+                x: 10 + Math.random() * 560,
+                y: -20,
+                size: 24,
+                speed: 2
+            });
+        }
+
+        function drawItem(item) {
+            ctx.fillStyle = "#22cc55";
+            ctx.fillRect(item.x + 8, item.y, 8, 24);
+            ctx.fillRect(item.x, item.y + 8, 24, 8);
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (keys["ArrowLeft"]) {
+                player.x -= player.speed;
+            }
+
+            if (keys["ArrowRight"]) {
+                player.x += player.speed;
+            }
+
+            player.x = Math.max(0, Math.min(560, player.x));
+
+            if (keys["Space"]) {
+                shoot();
+            }
+
+            if (Date.now() - enemyTimer > 1000) {
+                createEnemy();
+                enemyTimer = Date.now();
+            }
+
+            if (
+                items.length === 0 &&
+                Date.now() - itemTimer > 8000 &&
+                Math.random() < 0.03
+            ) {
+                createItem();
+                itemTimer = Date.now();
+            }
+
+            drawPlayer();
+
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let bullet = bullets[i];
+
+                bullet.y -= 8;
+
+                ctx.fillStyle = "yellow";
+                ctx.fillRect(bullet.x - 3, bullet.y, 6, 12);
+
+                if (bullet.y < 0) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                let enemy = enemies[i];
+
+                enemy.y += enemy.speed;
+
+                ctx.fillStyle = "tomato";
+                ctx.fillRect(
+                    enemy.x,
+                    enemy.y,
+                    enemy.size,
+                    enemy.size
+                );
+
+                if (
+                    enemy.x < player.x + player.width &&
+                    enemy.x + enemy.size > player.x &&
+                    enemy.y < player.y + player.height &&
+                    enemy.y + enemy.size > player.y
+                ) {
+                    enemies.splice(i, 1);
+                    hp--;
+                    updateUI();
+
+                    if (hp <= 0) {
+                        endGame();
+                        return;
+                    }
+
+                    continue;
+                }
+
+                let hit = false;
+
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    let bullet = bullets[j];
+
+                    if (
+                        bullet.x > enemy.x &&
+                        bullet.x < enemy.x + enemy.size &&
+                        bullet.y > enemy.y &&
+                        bullet.y < enemy.y + enemy.size
+                    ) {
+                        bullets.splice(j, 1);
+                        hit = true;
+                        break;
+                    }
+                }
+
+                if (hit) {
+                    enemies.splice(i, 1);
+                    score += 1;
+                    updateUI();
+                    continue;
+                }
+
+                if (enemy.y > canvas.height) {
+                    enemies.splice(i, 1);
+                    hp--;
+                    updateUI();
+
+                    if (hp <= 0) {
+                        endGame();
+                        return;
+                    }
+                }
+            }
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                let item = items[i];
+
+                item.y += item.speed;
+
+                drawItem(item);
+
+                if (
+                    item.x < player.x + player.width &&
+                    item.x + item.size > player.x &&
+                    item.y < player.y + player.height &&
+                    item.y + item.size > player.y
+                ) {
+                    items.splice(i, 1);
+                    hp++;
+                    updateUI();
+                    continue;
+                }
+
+                if (item.y > canvas.height) {
+                    items.splice(i, 1);
+                }
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            gameRunning = false;
+
+            ctx.fillStyle = "white";
+            ctx.font = "40px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("GAME OVER", 300, 240);
+
+            ctx.fillStyle = "white";
+            ctx.font = "22px Arial";
+            ctx.fillText("최종 점수: " + score, 300, 280);
+        }
+    </script>
+
+</body>
+</html>
