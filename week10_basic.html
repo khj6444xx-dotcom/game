@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Flappy Bird</title>
+
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial;
+        }
+
+        canvas {
+            border: 2px solid black;
+            background: skyblue;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Flappy Bird</h1>
+
+    <p>
+        점수: <span id="score">0</span> |
+        최고 기록: <span id="highScore">0</span>
+    </p>
+
+    <p>
+        조작: Space 키 또는 마우스 클릭
+        <button id="restartBtn" onclick="restartGame()">다시 시작</button>
+    </p>
+
+    <canvas id="gameCanvas" width="400" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const scoreText = document.getElementById("score");
+        const highScoreText = document.getElementById("highScore");
+
+        let score = 0;
+        let gameOver = false;
+        let countdown = 3;
+        let gameStarted = false;
+        let countdownTimer;
+
+        let pipeSpeed = 2;
+
+        const bird = {
+            x: 80,
+            y: 250,
+            radius: 15,
+            velocity: 0,
+            gravity: 0.3,
+            jumpPower: -8
+        };
+
+        let pipes = [];
+
+        function drawBird() {
+            ctx.beginPath();
+            ctx.arc(
+                bird.x,
+                bird.y,
+                bird.radius,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fillStyle = "yellow";
+            ctx.fill();
+
+            ctx.fillStyle = "black";
+            ctx.beginPath();
+            ctx.arc(
+                bird.x + 5,
+                bird.y - 5,
+                3,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
+
+        function moveBird() {
+            bird.velocity += bird.gravity;
+            bird.y += bird.velocity;
+        }
+
+        function jump() {
+            if (gameOver || !gameStarted) return;
+
+            bird.velocity = bird.jumpPower;
+        }
+
+        document.addEventListener("keydown", function(event) {
+            if (event.code === "Space") {
+                event.preventDefault();
+                jump();
+            }
+        });
+
+        document.addEventListener("click", function(event) {
+            if (event.target.id === "restartBtn") return;
+
+            jump();
+        });
+
+        function createPipe() {
+            let gap = 170;
+            let topHeight = Math.random() * 200 + 50;
+
+            let isGolden = Math.random() < 0.15;
+
+            pipes.push({
+                x: canvas.width,
+                top: topHeight,
+                bottom: topHeight + gap,
+                width: 60,
+                scored: false,
+                isGolden: isGolden
+            });
+        }
+
+        function drawPipes() {
+            pipes.forEach(function(pipe) {
+
+                if (pipe.isGolden) {
+                    ctx.fillStyle = "gold";
+                } else {
+                    ctx.fillStyle = "green";
+                }
+
+                ctx.fillRect(
+                    pipe.x,
+                    0,
+                    pipe.width,
+                    pipe.top
+                );
+
+                ctx.fillRect(
+                    pipe.x,
+                    pipe.bottom,
+                    pipe.width,
+                    canvas.height - pipe.bottom
+                );
+            });
+        }
+
+        function movePipes() {
+            pipes.forEach(function(pipe) {
+                pipe.x -= pipeSpeed;
+
+                if (!pipe.scored && pipe.x + pipe.width < bird.x) {
+
+                    if (pipe.isGolden) {
+                        score += 3;
+                    } else {
+                        score++;
+                    }
+
+                    scoreText.textContent = score;
+
+                    pipe.scored = true;
+
+                    updateHighScore();
+
+                    pipeSpeed = Math.min(
+                        2 + Math.floor(score / 5) * 0.5,
+                        5
+                    );
+                }
+            });
+
+            pipes = pipes.filter(function(pipe) {
+                return pipe.x + pipe.width > 0;
+            });
+        }
+
+        function checkCollision() {
+            if (
+                bird.y - bird.radius < 0 ||
+                bird.y + bird.radius > canvas.height
+            ) {
+                endGame();
+            }
+
+            pipes.forEach(function(pipe) {
+                if (
+                    bird.x + bird.radius > pipe.x &&
+                    bird.x - bird.radius < pipe.x + pipe.width &&
+                    (
+                        bird.y - bird.radius < pipe.top ||
+                        bird.y + bird.radius > pipe.bottom
+                    )
+                ) {
+                    endGame();
+                }
+            });
+        }
+
+        function drawCountdown() {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "white";
+            ctx.font = "bold 65px Arial";
+            ctx.textAlign = "center";
+
+            ctx.fillText(
+                countdown > 0 ? countdown : "START!",
+                canvas.width / 2,
+                260
+            );
+        }
+
+        function drawGameOver() {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "white";
+            ctx.font = "bold 35px Arial";
+            ctx.textAlign = "center";
+
+            ctx.fillText(
+                "GAME OVER",
+                canvas.width / 2,
+                220
+            );
+
+            ctx.font = "22px Arial";
+
+            ctx.fillText(
+                "최종 점수: " + score,
+                canvas.width / 2,
+                270
+            );
+        }
+
+        function endGame() {
+            if (gameOver) return;
+
+            gameOver = true;
+            drawGameOver();
+        }
+
+        let pipeTimer = 0;
+
+        let highScore = Number(
+            localStorage.getItem("flappyHighScore")
+        ) || 0;
+
+        highScoreText.textContent = highScore;
+
+        function updateHighScore() {
+            if (score > highScore) {
+                highScore = score;
+                highScoreText.textContent = highScore;
+
+                localStorage.setItem(
+                    "flappyHighScore",
+                    highScore
+                );
+            }
+        }
+
+        function gameLoop() {
+            if (gameOver || !gameStarted) return;
+
+            ctx.clearRect(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            moveBird();
+
+            pipeTimer++;
+
+            if (pipeTimer >= 100) {
+                createPipe();
+                pipeTimer = 0;
+            }
+
+            movePipes();
+            drawPipes();
+            drawBird();
+
+            checkCollision();
+
+            if (!gameOver) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function startCountdown() {
+            clearInterval(countdownTimer);
+
+            countdown = 3;
+            gameStarted = false;
+
+            function drawStartScreen() {
+                ctx.clearRect(
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height
+                );
+
+                drawPipes();
+                drawBird();
+                drawCountdown();
+            }
+
+            drawStartScreen();
+
+            countdownTimer = setInterval(function() {
+                countdown--;
+
+                if (countdown > 0) {
+                    drawStartScreen();
+                } else {
+                    clearInterval(countdownTimer);
+
+                    ctx.clearRect(
+                        0,
+                        0,
+                        canvas.width,
+                        canvas.height
+                    );
+
+                    gameStarted = true;
+                    gameLoop();
+                }
+            }, 1000);
+        }
+
+        function restartGame() {
+            clearInterval(countdownTimer);
+
+            score = 0;
+            gameOver = false;
+
+            pipeSpeed = 2;
+
+            scoreText.textContent = score;
+
+            bird.x = 80;
+            bird.y = 250;
+            bird.velocity = 0;
+
+            pipes = [];
+            pipeTimer = 0;
+
+            startCountdown();
+        }
+
+        restartGame();
+
+    </script>
+
+</body>
+
+</html>
